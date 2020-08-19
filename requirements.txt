@@ -1,2 +1,3 @@
 pyfuse3
 pymongo
+trio

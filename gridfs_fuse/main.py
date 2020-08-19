@@ -4,6 +4,7 @@ Mounts a GridFS filesystem using FUSE in Python
 import logging
 import argparse
 import pyfuse3
+import trio
 import os
 import sys
 
@@ -227,7 +228,7 @@ def run_fuse_mount(ops, options, mount_opts):
     # Note: This maybe a bug in pyfuse3
     workers = opts.get('workers', opts.get('single', 1))  # fudge for backwards compatibility  
     try:
-        pyfuse3.main(workers)  # maintain compatibility with single/workers kwarg
+        trio.run(pyfuse3.main)  # maintain compatibility with single/workers kwarg
     except KeyboardInterrupt:
         pass
     finally:
