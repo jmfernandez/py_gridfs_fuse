@@ -1,3 +1,6 @@
+* 2018-09-13 -- 0.2.0
+ * Add more robustness by using retryable write option if possible.
+
 * 2017-02-06 -- 0.1.2
  * Added mount.gridfs script which behaves similar to other mount progs
  * Fixed bug during initial mount when creating new gridfs collection

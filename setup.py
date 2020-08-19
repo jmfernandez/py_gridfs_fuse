@@ -9,6 +9,7 @@ mount_script = 'mount.gridfs' if sys.platform != 'darwin' else 'mount_gridfs'
 
 setup(
     name="gridfs_fuse",
+    version='0.2.0',
     url='https://github.com/axiros/py_gridfs_fuse',
     description=open(here + 'README.md').readlines()[1].strip('\n'),
     license=open(here + 'LICENSE.md').readlines()[0].strip('\n'),
