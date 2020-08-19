@@ -35,7 +35,7 @@ class Entry(object):
         self.uid = uid
         self.gid = gid
 
-        self.atime = self.mtime = self.ctime = int(time.time())
+        self.atime = self.mtime = self.ctime = time.time_ns()
 
         # Only for directories
         # filename: inode
@@ -189,9 +189,9 @@ class Operations(pyfuse3.Operations):
             'st_mode',
             'st_uid',
             'st_gid',
-            'st_atime',
-            'st_mtime',
-            'st_ctime'
+            'st_atime_ns',
+            'st_mtime_ns',
+            'st_ctime_ns'
         ]
 
         for attr_name in to_set:
@@ -440,9 +440,9 @@ class Operations(pyfuse3.Operations):
         attr.st_blksize = 512
         attr.st_blocks = (attr.st_size // attr.st_blksize) + 1
 
-        attr.st_atime = int(entry.atime)
-        attr.st_mtime = int(entry.mtime)
-        attr.st_ctime = int(entry.ctime)
+        attr.st_atime_ns = entry.atime
+        attr.st_mtime_ns = entry.mtime
+        attr.st_ctime_ns = entry.ctime
 
         return attr
 
