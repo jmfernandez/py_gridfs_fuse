@@ -42,7 +42,6 @@ except:
     clock_gettime.restype = ctypes.c_int64
 
     def time_ns():
-        if hasattr(time.
         tmp = timespec()
         ret = clock_gettime(CLOCK_REALTIME, ctypes.pointer(tmp))
         if bool(ret):
