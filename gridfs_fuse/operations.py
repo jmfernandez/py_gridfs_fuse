@@ -399,7 +399,7 @@ class Operations(llfuse.Operations):
     def _entry_to_doc(self, entry):
         doc = dict(vars(entry))
         del doc['_ops']
-        doc['childs'] = entry.childs.items()
+        doc['childs'] = list(entry.childs.items())
         return doc
 
     def _doc_to_entry(self, doc):
