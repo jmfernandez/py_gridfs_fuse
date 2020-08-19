@@ -61,7 +61,7 @@ class Entry(object):
         self.uid = uid
         self.gid = gid
 
-        self.atime = self.mtime = self.ctime = time_ns()
+        self.atime_ns = self.mtime_ns = self.ctime_ns = time_ns()
 
         # Only for directories
         # filename: inode
@@ -211,13 +211,13 @@ class Operations(pyfuse3.Operations):
 
         entry = self._entry_by_inode(inode)
 
-        # Now way to change the size of an existing file.
-        if attr.st_size is not None:
+        # No way to change the size of an existing file.
+        if fields.update_size is not None:
             raise pyfuse3.FUSEError(errno.EINVAL)
 
         if attr.st_rdev is not None:
             raise pyfuse3.FUSEError(errno.ENOSYS)
-
+        
         to_set = [
             'st_mode',
             'st_uid',
@@ -480,9 +480,9 @@ class Operations(pyfuse3.Operations):
         attr.st_blksize = 512
         attr.st_blocks = (attr.st_size // attr.st_blksize) + 1
 
-        attr.st_atime_ns = entry.atime
-        attr.st_mtime_ns = entry.mtime
-        attr.st_ctime_ns = entry.ctime
+        attr.st_atime_ns = entry.atime_ns
+        attr.st_mtime_ns = entry.mtime_ns
+        attr.st_ctime_ns = entry.ctime_ns
 
         return attr
 
