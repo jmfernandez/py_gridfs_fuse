@@ -205,33 +205,35 @@ class Operations(pyfuse3.Operations):
         self.meta.update_one(query, update)
 
         return entry
-
+    
+    Fields2Attr = {
+        'update_size': None,
+        'update_uid': 'st_uid',
+        'update_gid': 'st_gid',
+        'update_mode': 'st_mode',
+        'update_atime': 'st_atime_ns',
+        'update_mtime': 'st_mtime_ns',
+        'update_ctime': 'st_ctime_ns',
+    }
+    
     async def setattr(self, inode, attr, fields, fh, ctx):
         self.logger.debug("setattr: %s %s", inode, attr)
-
-        entry = self._entry_by_inode(inode)
-
-        # No way to change the size of an existing file.
-        if fields.update_size is not None:
-            raise pyfuse3.FUSEError(errno.EINVAL)
 
         if attr.st_rdev is not None:
             raise pyfuse3.FUSEError(errno.ENOSYS)
         
-        to_set = [
-            'st_mode',
-            'st_uid',
-            'st_gid',
-            'st_atime_ns',
-            'st_mtime_ns',
-            'st_ctime_ns'
-        ]
+        if fields.update_size is not None:
+            raise pyfuse3.FUSEError(errno.EINVAL)
+        
+        entry = self._entry_by_inode(inode)
 
-        for attr_name in to_set:
-            val = getattr(attr, attr_name, None)
-            if val is not None:
-                target = attr_name[3:]
-                setattr(entry, target, val)
+        # No way to change the size of an existing file.
+        for field_name, attr_name in self.Fields2Attr.items():
+            if getattr(fields,field_name,None) is not None:
+                val = getattr(attr, attr_name, None)
+                if val is not None:
+                    target = attr_name[3:]
+                    setattr(entry, target, val)
 
         self._update_entry(entry)
         return await self.getattr(inode,ctx)
