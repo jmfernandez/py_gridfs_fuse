@@ -1,6 +1,9 @@
 # python gridfs fuse
 A FUSE wrapper around MongoDB gridfs using python and pyfuse3.
 
+This work is based on <https://github.com/axiros/py_gridfs_fuse>
+and <https://github.com/Liam-Deacon/py_gridfs_fuse> developments.
+
 ## Usage
 
 ```bash
@@ -21,14 +24,14 @@ into `/sbin/` e.g. `sudo ln -s $(which mount.gridfs) /sbin/`
 ## Install
 Ubuntu 16.04:
 ```bash
-sudo apt-get install libfuse python-pyfuse3
-sudo -H pip install py_gridfs_fuse
+sudo apt-get install libfuse python3-pip
+sudo -H pip3 install git+https://github.com/jmfernandez/py_gridfs_fuse.git@v0.2.1
 ```
 
 MacOSX:
 ```bash
 brew install osxfuse
-sudo -H pip install py_gridfs_fuse
+sudo -H pip3 install git+https://github.com/jmfernandez/py_gridfs_fuse.git@v0.2.1
 ```
 
 

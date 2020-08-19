@@ -1,3 +1,6 @@
+* 2020-08-20 -- 0.2.1
+ * Forked and properly migrated to Python3 and pyfuse3.
+
 * 2018-09-13 -- 0.2.0
  * Add more robustness by using retryable write option if possible.
 
