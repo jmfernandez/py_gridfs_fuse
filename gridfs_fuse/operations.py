@@ -68,7 +68,7 @@ class Operations(pyfuse3.Operations):
         self.active_inodes = collections.defaultdict(int)
         self.active_writes = {}
 
-    async def open(self, inode, flags):
+    async def open(self, inode, flags, ctx):
         self.logger.debug("open: %s %s", inode, flags)
 
         # Do not allow writes to a existing file
@@ -82,7 +82,7 @@ class Operations(pyfuse3.Operations):
         self.active_inodes[inode] += 1
         return inode
 
-    async def opendir(self, inode):
+    async def opendir(self, inode, ctx):
         """Just to check access, dont care about access => return inode"""
         self.logger.debug("opendir: %s", inode)
         return inode
@@ -92,19 +92,21 @@ class Operations(pyfuse3.Operations):
         self.logger.debug("access: %s %s %s", inode, mode, ctx)
         return True
 
-    async def getattr(self, inode):
+    async def getattr(self, inode, ctx=None):
         self.logger.debug("getattr: %s", inode)
-        return self._gen_attr(self._entry_by_inode(inode))
+        return await self._gen_attr(self._entry_by_inode(inode))
 
-    async def readdir(self, inode, off):
+    async def readdir(self, inode, off, token):
         self.logger.debug("readdir: %s %s", inode, off)
 
         entry = self._entry_by_inode(inode)
         for index, child_inode in enumerate(entry.childs.values()[off:]):
             child = self._entry_by_inode(child_inode)
-            yield (child.filename, self._gen_attr(child), off + index + 1)
+            if not self.readdir_reply(token,child.filename, await self._gen_attr(child), off + index + 1):
+                break
+        return
 
-    async def lookup(self, folder_inode, name):
+    async def lookup(self, folder_inode, name, ctx):
         self.logger.debug("lookup: %s %s", folder_inode, name)
 
         if name == '.':
@@ -122,7 +124,7 @@ class Operations(pyfuse3.Operations):
             else:
                 raise pyfuse3.FUSEError(errno.ENOENT)
 
-        return self.getattr(inode)
+        return await self.getattr(inode)
 
     async def mknod(self, inode_p, name, mode, rdev, ctx):
         self.logger.debug("mknod")
@@ -130,19 +132,19 @@ class Operations(pyfuse3.Operations):
 
     async def mkdir(self, folder_inode, name, mode, ctx):
         self.logger.debug("mkdir: %s %s %s %s", folder_inode, name, mode, ctx)
-        entry = self._create_entry(folder_inode, name, mode, ctx)
-        return self._gen_attr(entry)
+        entry = await self._create_entry(folder_inode, name, mode, ctx)
+        return await self._gen_attr(entry)
 
     async def create(self, folder_inode, name, mode, flags, ctx):
         self.logger.debug("create: %s %s %s %s", folder_inode, name, mode, flags)
 
-        entry = self._create_entry(folder_inode, name, mode, ctx)
+        entry = await self._create_entry(folder_inode, name, mode, ctx)
         grid_in = self._create_grid_in(entry)
 
         self.active_inodes[entry.inode] += 1
         self.active_writes[entry.inode] = grid_in
 
-        return (entry.inode, self._gen_attr(entry))
+        return (pyfuse3.FileInfo(fh=entry.inode), await self._gen_attr(entry))
 
     def _create_grid_in(self, entry):
         gridfs_filename = self._create_full_path(entry)
@@ -159,7 +161,7 @@ class Operations(pyfuse3.Operations):
         path.appendleft(entry.filename)
         return os.path.join(*path)
 
-    def _create_entry(self, folder_inode, name, mode, ctx):
+    async def _create_entry(self, folder_inode, name, mode, ctx):
         inode = self._gen_inode()
         entry = Entry(self, name, inode, folder_inode, mode, ctx.uid, ctx.gid)
 
@@ -171,7 +173,7 @@ class Operations(pyfuse3.Operations):
 
         return entry
 
-    async def setattr(self, inode, attr):
+    async def setattr(self, inode, attr, fields, fh, ctx):
         self.logger.debug("setattr: %s %s", inode, attr)
 
         entry = self._entry_by_inode(inode)
@@ -199,9 +201,9 @@ class Operations(pyfuse3.Operations):
                 setattr(entry, target, val)
 
         self._update_entry(entry)
-        return self._gen_attr(entry)
+        return await self.getattr(inode,ctx)
 
-    async def unlink(self, folder_inode, name):
+    async def unlink(self, folder_inode, name, ctx):
         self.logger.debug("unlink: %s %s", folder_inode, name)
 
         self._delete_inode(
@@ -209,7 +211,7 @@ class Operations(pyfuse3.Operations):
             name,
             self._delete_inode_check_file)
 
-    async def rmdir(self, folder_inode, name):
+    async def rmdir(self, folder_inode, name, ctx):
         self.logger.debug("rmdir: %s %s", folder_inode, name)
 
         self._delete_inode(
@@ -303,9 +305,18 @@ class Operations(pyfuse3.Operations):
         self.logger.debug("releasedir: %s", inode)
 
     async def forget(self, inode_list):
+        for inode, nlookup in inode_list:
+            if inode in self.active_inodes:
+                self.active_inodes[inode] -= nlookup
+                if self.active_inodes[inode] <= 0:
+                    del self.active_inodes[inode]
+                    if inode in self.active_writes:
+                        self.active_writes[inode].close()
+                        del self.active_writes[inode]
+        
         self.logger.debug("forget: %s", inode_list)
 
-    async def readlink(self, inode):
+    async def readlink(self, inode, ctx):
         self.logger.debug("readlink: %s", inode)
         raise pyfuse3.FUSEError(errno.ENOSYS)
 
@@ -313,7 +324,7 @@ class Operations(pyfuse3.Operations):
         self.logger.debug("symlink: %s %s %s", folder_inode, name, target)
         raise pyfuse3.FUSEError(errno.ENOSYS)
 
-    async def rename(self, old_folder_inode, old_name, new_folder_inode, new_name):
+    async def rename(self, old_folder_inode, old_name, new_folder_inode, new_name, flags, ctx):
         self.logger.debug(
             "rename: %s %s %s %s",
             old_folder_inode,
@@ -322,7 +333,7 @@ class Operations(pyfuse3.Operations):
             new_name)
 
         # Load the entry to move
-        entry_attributes = self.lookup(old_folder_inode, old_name)
+        entry_attributes = await self.lookup(old_folder_inode, old_name, ctx)
         entry = self._entry_by_inode(entry_attributes.st_ino)
 
         # Load the target directory
@@ -362,7 +373,7 @@ class Operations(pyfuse3.Operations):
         update = {"$set": {'filename': gridfs_filename}}
         self.gridfs_files.update_one(query, update)
 
-    async def link(self, inode, new_parent_inode, new_name):
+    async def link(self, inode, new_parent_inode, new_name, ctx):
         self.logger.debug("link: %s %s %s", inode, new_parent_inode, new_name)
         raise pyfuse3.FUSEError(errno.ENOSYS)
 
@@ -378,7 +389,7 @@ class Operations(pyfuse3.Operations):
         self.logger.debug("fsyncdir: %s %s", fd, datasync)
         raise pyfuse3.FUSEError(errno.ENOSYS)
 
-    async def statfs(self):
+    async def statfs(self, ctx):
         self.logger.debug("statfs")
         raise pyfuse3.FUSEError(errno.ENOSYS)
 
@@ -409,7 +420,7 @@ class Operations(pyfuse3.Operations):
         entry.__dict__.update(doc)
         return entry
 
-    def _gen_attr(self, entry):
+    async def _gen_attr(self, entry):
         attr = pyfuse3.EntryAttributes()
 
         attr.st_ino = entry.inode
