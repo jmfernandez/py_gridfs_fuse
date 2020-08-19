@@ -73,7 +73,7 @@ class Entry(object):
 
 
 class Operations(pyfuse3.Operations):
-    def __init__(self, database, collection='fs', logfile=None, debug=os.environ.get('GRIDFS_FUSE_DEBUG')):
+    def __init__(self, database, collection='fs', logfile=None, debug=os.environ.get('GRIDFS_FUSE_DEBUG'), filename_encoding='utf-8'):
         super(Operations, self).__init__()
 
         self.logger = logging.getLogger("gridfs_fuse")
@@ -86,6 +86,7 @@ class Operations(pyfuse3.Operations):
         #self._readonly = read_only
         self._database = database
         self._collection = collection
+        self._filename_encoding = filename_encoding
         
         self.meta = compat_collection(database, collection + '.metadata')
         self.gridfs = gridfs.GridFS(database, collection)
@@ -128,13 +129,17 @@ class Operations(pyfuse3.Operations):
         entry = self._entry_by_inode(inode)
         for index, child_inode in enumerate(itertools.islice(entry.childs.values(),off,None),off+1):
             child = self._entry_by_inode(child_inode)
-            if not pyfuse3.readdir_reply(token,child.filename, await self._gen_attr(child), index):
+            
+            if not pyfuse3.readdir_reply(token,child.filename.encode(self._filename_encoding), await self._gen_attr(child), index):
                 break
         return
 
-    async def lookup(self, folder_inode, name, ctx):
-        self.logger.debug("lookup: %s %s", folder_inode, name)
-
+    async def lookup(self, folder_inode, bname, ctx):
+        self.logger.debug("lookup: %s %s", folder_inode, bname)
+        
+        # Names are in bytes, so translate to UTF-8
+        name = bname.decode(self._filename_encoding,'replace')
+        
         if name == '.':
             inode = folder_inode
 
@@ -152,19 +157,19 @@ class Operations(pyfuse3.Operations):
 
         return await self.getattr(inode)
 
-    async def mknod(self, inode_p, name, mode, rdev, ctx):
+    async def mknod(self, inode_p, bname, mode, rdev, ctx):
         self.logger.debug("mknod")
         raise pyfuse3.FUSEError(errno.ENOSYS)
 
-    async def mkdir(self, folder_inode, name, mode, ctx):
-        self.logger.debug("mkdir: %s %s %s %s", folder_inode, name, mode, ctx)
-        entry = await self._create_entry(folder_inode, name, mode, ctx)
+    async def mkdir(self, folder_inode, bname, mode, ctx):
+        self.logger.debug("mkdir: %s %s %s %s", folder_inode, bname, mode, ctx)
+        entry = await self._create_entry(folder_inode, bname, mode, ctx)
         return await self._gen_attr(entry)
 
-    async def create(self, folder_inode, name, mode, flags, ctx):
-        self.logger.debug("create: %s %s %s %s", folder_inode, name, mode, flags)
+    async def create(self, folder_inode, bname, mode, flags, ctx):
+        self.logger.debug("create: %s %s %s %s", folder_inode, bname, mode, flags)
 
-        entry = await self._create_entry(folder_inode, name, mode, ctx)
+        entry = await self._create_entry(folder_inode, bname, mode, ctx)
         grid_in = self._create_grid_in(entry)
 
         self.active_inodes[entry.inode] += 1
@@ -184,15 +189,13 @@ class Operations(pyfuse3.Operations):
         while entry._id != pyfuse3.ROOT_INODE:
             path.appendleft(entry.filename)
             entry = self._entry_by_inode(entry.parent_inode)
-        path.appendleft(entry.filename)
-        print("DEBUG",file=sys.stderr)
-        import pprint
-        pprint.pprint(path,stream=sys.stderr)
-        sys.stderr.flush()
+        path.appendleft(entry.filename)        
         return os.path.join(*path)
 
-    async def _create_entry(self, folder_inode, name, mode, ctx):
+    async def _create_entry(self, folder_inode, bname, mode, ctx):
         inode = self._gen_inode()
+        # Names are in bytes, so translate to UTF-8
+        name = bname.decode(self._filename_encoding,'replace')
         entry = Entry(self, name, inode, folder_inode, mode, ctx.uid, ctx.gid)
 
         self._insert_entry(entry)
@@ -233,23 +236,23 @@ class Operations(pyfuse3.Operations):
         self._update_entry(entry)
         return await self.getattr(inode,ctx)
 
-    async def unlink(self, folder_inode, name, ctx):
-        self.logger.debug("unlink: %s %s", folder_inode, name)
+    async def unlink(self, folder_inode, bname, ctx):
+        self.logger.debug("unlink: %s %s", folder_inode, bname)
 
         self._delete_inode(
             folder_inode,
-            name,
+            bname,
             self._delete_inode_check_file)
 
-    async def rmdir(self, folder_inode, name, ctx):
-        self.logger.debug("rmdir: %s %s", folder_inode, name)
+    async def rmdir(self, folder_inode, bname, ctx):
+        self.logger.debug("rmdir: %s %s", folder_inode, bname)
 
         self._delete_inode(
             folder_inode,
-            name,
+            bname,
             self._delete_inode_check_directory)
 
-    def _delete_inode(self, folder_inode, name, entry_check):
+    def _delete_inode(self, folder_inode, bname, entry_check):
         # On insert the order is like this
         # 1. write into the database.
         #    the unique index (parent_inode, filename) protects
@@ -261,6 +264,9 @@ class Operations(pyfuse3.Operations):
 
         # In that case the unique index protection is true
 
+        # Names are in bytes, so translate to UTF-8
+        name = bname.decode(self._filename_encoding,'replace')
+        
         parent = self._entry_by_inode(folder_inode)
 
         if name not in parent.childs:
@@ -350,29 +356,33 @@ class Operations(pyfuse3.Operations):
         self.logger.debug("readlink: %s", inode)
         raise pyfuse3.FUSEError(errno.ENOSYS)
 
-    async def symlink(self, folder_inode, name, target, ctx):
-        self.logger.debug("symlink: %s %s %s", folder_inode, name, target)
+    async def symlink(self, folder_inode, bname, target, ctx):
+        self.logger.debug("symlink: %s %s %s", folder_inode, bname, target)
         raise pyfuse3.FUSEError(errno.ENOSYS)
 
-    async def rename(self, old_folder_inode, old_name, new_folder_inode, new_name, flags, ctx):
+    async def rename(self, old_folder_inode, old_bname, new_folder_inode, new_bname, flags, ctx):
         self.logger.debug(
             "rename: %s %s %s %s",
             old_folder_inode,
-            old_name,
+            old_bname,
             new_folder_inode,
-            new_name)
+            new_bname)
 
         # Load the entry to move
-        entry_attributes = await self.lookup(old_folder_inode, old_name, ctx)
+        entry_attributes = await self.lookup(old_folder_inode, old_bname, ctx)
         entry = self._entry_by_inode(entry_attributes.st_ino)
 
         # Load the target directory
         new_folder = self._entry_by_inode(new_folder_inode)
 
         # Check if the folder already contains this name and remove it.
+        
+        # Names are in bytes, so translate to UTF-8
+        new_name = new_bname.decode(self._filename_encoding,'replace')
+        
         if new_name in new_folder.childs:
             noop = lambda entry: None
-            self._delete_inode(new_folder.inode, new_name, noop)
+            self._delete_inode(new_folder.inode, new_bname, noop)
 
         # Set the new parent and filename to the existing inode.
         query = {"_id": entry.inode}
@@ -403,8 +413,8 @@ class Operations(pyfuse3.Operations):
         update = {"$set": {'filename': gridfs_filename}}
         self.gridfs_files.update_one(query, update)
 
-    async def link(self, inode, new_parent_inode, new_name, ctx):
-        self.logger.debug("link: %s %s %s", inode, new_parent_inode, new_name)
+    async def link(self, inode, new_parent_inode, new_bname, ctx):
+        self.logger.debug("link: %s %s %s", inode, new_parent_inode, new_bname)
         raise pyfuse3.FUSEError(errno.ENOSYS)
 
     async def flush(self, fd):
