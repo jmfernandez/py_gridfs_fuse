@@ -4,6 +4,7 @@ import stat
 import time
 import errno
 import collections
+import itertools
 
 import pyfuse3
 import gridfs
@@ -125,9 +126,9 @@ class Operations(pyfuse3.Operations):
         self.logger.debug("readdir: %s %s", inode, off)
 
         entry = self._entry_by_inode(inode)
-        for index, child_inode in enumerate(entry.childs.values()[off:]):
+        for index, child_inode in enumerate(itertools.islice(entry.childs.values(),off,None),off+1):
             child = self._entry_by_inode(child_inode)
-            if not self.readdir_reply(token,child.filename, await self._gen_attr(child), off + index + 1):
+            if not self.readdir_reply(token,child.filename, await self._gen_attr(child), index):
                 break
         return
 
