@@ -219,17 +219,17 @@ class Operations(pyfuse3.Operations):
     async def setattr(self, inode, attr, fields, fh, ctx):
         self.logger.debug("setattr: %s %s", inode, attr)
 
-        if attr.st_rdev is not None:
-            raise pyfuse3.FUSEError(errno.ENOSYS)
+        #if attr.st_rdev:
+        #    raise pyfuse3.FUSEError(errno.ENOSYS)
         
-        if fields.update_size is not None:
+        if fields.update_size:
             raise pyfuse3.FUSEError(errno.EINVAL)
         
         entry = self._entry_by_inode(inode)
 
         # No way to change the size of an existing file.
         for field_name, attr_name in self.Fields2Attr.items():
-            if getattr(fields,field_name,None) is not None:
+            if getattr(fields,field_name,None):
                 val = getattr(attr, attr_name, None)
                 if val is not None:
                     target = attr_name[3:]
