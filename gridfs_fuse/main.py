@@ -3,7 +3,7 @@ Mounts a GridFS filesystem using FUSE in Python
 '''
 import logging
 import argparse
-import llfuse
+import pyfuse3
 import os
 import sys
 
@@ -15,7 +15,7 @@ FUSE_OPTIONS_HELP='''
 FUSE options for mount (comma-separated) [default: %(default)s]. 
   debug - turn on detailed debugging. 
   workers=N - number of workers [default: 1]. 
-  single - equivalent to workers=1 for llfuse compatibility. 
+  single - equivalent to workers=1 for pyfuse3 compatibility. 
   log_level=LEVEL - specifies the logging level. 
   log_file=FILE - specifies path for loging to file. 
   foreground - run process in foreground rather than as daemon process. 
@@ -190,8 +190,13 @@ def run_fuse_mount(ops, options, mount_opts):
     # strip invalid keys
     ignored_keys = ['debug', 'foreground', 'log_level', 'log_file', 'workers', 'single']
     valid_keys = [k for k in opts if k not in ignored_keys]
-    mount_opts = ['='.join([k, opts[k]]) if opts[k] is not None else k for k in valid_keys]
-
+    mount_opts = set(pyfuse3.default_options)
+    for k in valid_keys:
+        if opts[k] is not None:
+            mount_opts.add('='.join([k, opts[k]]))
+        else:
+            mount_opts.add(k)
+    
     # handle some key options here
     if 'log_level' in opts:
         try:
@@ -205,7 +210,7 @@ def run_fuse_mount(ops, options, mount_opts):
             logging.warning('Unable to set log_level to {}: {}'.format(opts['log_level'], error)) 
 
     # start gridfs bindings and run fuse process
-    llfuse.init(ops, options.mount_point, mount_opts)
+    pyfuse3.init(ops, options.mount_point, mount_opts)
     
     # ensure that is single is given then it evaluates to true
     if 'single' in opts and opts['single'] is None:
@@ -218,15 +223,15 @@ def run_fuse_mount(ops, options, mount_opts):
             level=logging.DEBUG)
 
     
-    # TODO: Find way of capturing CTRL+C and calling llfuse.close() when in foreground
-    # Note: This maybe a bug in llfuse
+    # TODO: Find way of capturing CTRL+C and calling pyfuse3.close() when in foreground
+    # Note: This maybe a bug in pyfuse3
     workers = opts.get('workers', opts.get('single', 1))  # fudge for backwards compatibility  
     try:
-        llfuse.main(workers)  # maintain compatibility with single/workers kwarg
+        pyfuse3.main(workers)  # maintain compatibility with single/workers kwarg
     except KeyboardInterrupt:
         pass
     finally:
-        llfuse.close()
+        pyfuse3.close()
 
 
 def init(args, configure=configure_parser, validate=validate_options):

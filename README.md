@@ -1,5 +1,5 @@
 # python gridfs fuse
-A FUSE wrapper around MongoDB gridfs using python and llfuse.
+A FUSE wrapper around MongoDB gridfs using python and pyfuse3.
 
 ## Usage
 
@@ -16,12 +16,12 @@ into `/sbin/` e.g. `sudo ln -s $(which mount.gridfs) /sbin/`
 
 ## Requirements
  * pymongo
- * llfuse
+ * pyfuse3
 
 ## Install
 Ubuntu 16.04:
 ```bash
-sudo apt-get install libfuse python-llfuse
+sudo apt-get install libfuse python-pyfuse3
 sudo -H pip install py_gridfs_fuse
 ```
 

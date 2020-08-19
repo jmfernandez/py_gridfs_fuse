@@ -5,7 +5,7 @@ import time
 import errno
 import collections
 
-import llfuse
+import pyfuse3
 import gridfs
 
 import pymongo
@@ -46,7 +46,7 @@ class Entry(object):
         return self._id
 
 
-class Operations(llfuse.Operations):
+class Operations(pyfuse3.Operations):
     def __init__(self, database, collection='fs', logfile=None, debug=os.environ.get('GRIDFS_FUSE_DEBUG')):
         super(Operations, self).__init__()
 
@@ -73,11 +73,11 @@ class Operations(llfuse.Operations):
 
         # Do not allow writes to a existing file
         if flags & os.O_WRONLY: 
-            raise llfuse.FUSEError(errno.EACCES)
+            raise pyfuse3.FUSEError(errno.EACCES)
 
         # Deny if write mode and filesystem is mounted as read-only
         #if flags & (os.O_RDWR | os.O_CREAT | os.O_WRONLY | os.O_APPEND) and self._readonly:
-        #    raise llfuse.FUSWERROR(errno.EPERM)
+        #    raise pyfuse3.FUSWERROR(errno.EPERM)
         
         self.active_inodes[inode] += 1
         return inode
@@ -120,13 +120,13 @@ class Operations(llfuse.Operations):
                 if fn == name:
                     break
             else:
-                raise llfuse.FUSEError(errno.ENOENT)
+                raise pyfuse3.FUSEError(errno.ENOENT)
 
         return self.getattr(inode)
 
     def mknod(self, inode_p, name, mode, rdev, ctx):
         self.logger.debug("mknod")
-        raise llfuse.FUSEError(errno.ENOSYS)
+        raise pyfuse3.FUSEError(errno.ENOSYS)
 
     def mkdir(self, folder_inode, name, mode, ctx):
         self.logger.debug("mkdir: %s %s %s %s", folder_inode, name, mode, ctx)
@@ -153,7 +153,7 @@ class Operations(llfuse.Operations):
         # Add the full path to make other tools like
         # mongofiles, mod_gridfs, ngx_gridfs happy
         path = collections.deque()
-        while entry._id != llfuse.ROOT_INODE:
+        while entry._id != pyfuse3.ROOT_INODE:
             path.appendleft(entry.filename)
             entry = self._entry_by_inode(entry.parent_inode)
         path.appendleft(entry.filename)
@@ -178,10 +178,10 @@ class Operations(llfuse.Operations):
 
         # Now way to change the size of an existing file.
         if attr.st_size is not None:
-            raise llfuse.FUSEError(errno.EINVAL)
+            raise pyfuse3.FUSEError(errno.EINVAL)
 
         if attr.st_rdev is not None:
-            raise llfuse.FUSEError(errno.ENOSYS)
+            raise pyfuse3.FUSEError(errno.ENOSYS)
 
         to_set = [
             'st_mode',
@@ -232,7 +232,7 @@ class Operations(llfuse.Operations):
         parent = self._entry_by_inode(folder_inode)
 
         if name not in parent.childs:
-            raise llfuse.FUSEError(errno.ENOENT)
+            raise pyfuse3.FUSEError(errno.ENOENT)
         inode = parent.childs[name]
 
         entry = self._entry_by_inode(inode)
@@ -251,14 +251,14 @@ class Operations(llfuse.Operations):
 
     def _delete_inode_check_file(self, entry):
         if stat.S_ISDIR(entry.mode):
-            raise llfuse.FUSEError(errno.EISDIR)
+            raise pyfuse3.FUSEError(errno.EISDIR)
 
     def _delete_inode_check_directory(self, entry):
         if not stat.S_ISDIR(entry.mode):
-            raise llfuse.FUSEError(errno.ENOTDIR)
+            raise pyfuse3.FUSEError(errno.ENOTDIR)
 
         if len(entry.childs) > 0:
-            raise llfuse.FUSEError(errno.ENOTEMPTY)
+            raise pyfuse3.FUSEError(errno.ENOTEMPTY)
 
     def read(self, inode, offset, length):
         self.logger.debug("read: %s %s %s", inode, offset, length)
@@ -268,7 +268,7 @@ class Operations(llfuse.Operations):
         except gridfs.errors.NoFile:
             msg = "Read of inode (%s) fails. Gridfs object not found"
             self.logger.error(msg, inode)
-            raise llfuse.FUSEError(errno.EIO)
+            raise pyfuse3.FUSEError(errno.EIO)
 
         grid_out.seek(offset)
         return grid_out.read(length)
@@ -279,12 +279,12 @@ class Operations(llfuse.Operations):
         # Only 'append once' semantics are supported.
 
         if inode not in self.active_writes:
-            raise llfuse.FUSEError(errno.EINVAL)
+            raise pyfuse3.FUSEError(errno.EINVAL)
 
         grid_in = self.active_writes[inode]
 
         if offset != grid_in_size(grid_in):
-            raise llfuse.FUSEError(errno.EINVAL)
+            raise pyfuse3.FUSEError(errno.EINVAL)
 
         grid_in.write(data)
         return len(data)
@@ -307,11 +307,11 @@ class Operations(llfuse.Operations):
 
     def readlink(self, inode):
         self.logger.debug("readlink: %s", inode)
-        raise llfuse.FUSEError(errno.ENOSYS)
+        raise pyfuse3.FUSEError(errno.ENOSYS)
 
     def symlink(self, folder_inode, name, target, ctx):
         self.logger.debug("symlink: %s %s %s", folder_inode, name, target)
-        raise llfuse.FUSEError(errno.ENOSYS)
+        raise pyfuse3.FUSEError(errno.ENOSYS)
 
     def rename(self, old_folder_inode, old_name, new_folder_inode, new_name):
         self.logger.debug(
@@ -364,23 +364,23 @@ class Operations(llfuse.Operations):
 
     def link(self, inode, new_parent_inode, new_name):
         self.logger.debug("link: %s %s %s", inode, new_parent_inode, new_name)
-        raise llfuse.FUSEError(errno.ENOSYS)
+        raise pyfuse3.FUSEError(errno.ENOSYS)
 
     def flush(self, fd):
         self.logger.debug("flush: %s", fd)
-        raise llfuse.FUSEError(errno.ENOSYS)
+        raise pyfuse3.FUSEError(errno.ENOSYS)
 
     def fsync(self, fd, datasync):
         self.logger.debug("fsync: %s %s", fd, datasync)
-        raise llfuse.FUSEError(errno.ENOSYS)
+        raise pyfuse3.FUSEError(errno.ENOSYS)
 
     def fsyncdir(self, fd, datasync):
         self.logger.debug("fsyncdir: %s %s", fd, datasync)
-        raise llfuse.FUSEError(errno.ENOSYS)
+        raise pyfuse3.FUSEError(errno.ENOSYS)
 
     def statfs(self):
         self.logger.debug("statfs")
-        raise llfuse.FUSEError(errno.ENOSYS)
+        raise pyfuse3.FUSEError(errno.ENOSYS)
 
     def _entry_by_inode(self, inode):
         query = {'_id': inode}
@@ -410,7 +410,7 @@ class Operations(llfuse.Operations):
         return entry
 
     def _gen_attr(self, entry):
-        attr = llfuse.EntryAttributes()
+        attr = pyfuse3.EntryAttributes()
 
         attr.st_ino = entry.inode
         attr.generation = 0
@@ -466,8 +466,8 @@ def _ensure_root_inode(ops):
     root = Entry(
         ops,
         '/',
-        llfuse.ROOT_INODE,
-        llfuse.ROOT_INODE,
+        pyfuse3.ROOT_INODE,
+        pyfuse3.ROOT_INODE,
         stat.S_IFDIR | stat.S_IRWXU | mask,
         os.getuid(),
         os.getgid())
@@ -483,7 +483,7 @@ def _ensure_next_inode_document(ops):
     try:
         ops.meta.insert_one({
             "_id": "next_inode",
-            'value': llfuse.ROOT_INODE + 1
+            'value': pyfuse3.ROOT_INODE + 1
         })
     except pymongo.errors.DuplicateKeyError:
         pass
