@@ -107,7 +107,7 @@ class Operations(pyfuse3.Operations):
         #    raise pyfuse3.FUSWERROR(errno.EPERM)
         
         self.active_inodes[inode] += 1
-        return inode
+        return pyfuse3.FileInfo(fh=inode)
 
     async def opendir(self, inode, ctx):
         """Just to check access, dont care about access => return inode"""
