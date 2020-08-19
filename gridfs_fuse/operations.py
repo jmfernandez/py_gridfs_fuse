@@ -128,7 +128,7 @@ class Operations(pyfuse3.Operations):
         entry = self._entry_by_inode(inode)
         for index, child_inode in enumerate(itertools.islice(entry.childs.values(),off,None),off+1):
             child = self._entry_by_inode(child_inode)
-            if not self.readdir_reply(token,child.filename, await self._gen_attr(child), index):
+            if not pyfuse3.readdir_reply(token,child.filename, await self._gen_attr(child), index):
                 break
         return
 
@@ -185,6 +185,10 @@ class Operations(pyfuse3.Operations):
             path.appendleft(entry.filename)
             entry = self._entry_by_inode(entry.parent_inode)
         path.appendleft(entry.filename)
+        print("DEBUG",file=sys.stderr)
+        import pprint
+        pprint.pprint(path,stream=sys.stderr)
+        sys.stderr.flush()
         return os.path.join(*path)
 
     async def _create_entry(self, folder_inode, name, mode, ctx):
