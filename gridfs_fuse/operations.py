@@ -505,11 +505,27 @@ def _ensure_indexes(ops):
         ops.meta = compat_collection(ops._database, ops._collection + '.metadata')
         ops.meta.create_index(index, unique=False)
 
+DEFAULT_WIRE_VERSION = '3.6.0'
+WireVersion2Version={
+    3: '3.0.0',
+    4: '3.2.0',
+    5: '3.4.0',
+    6: DEFAULT_WIRE_VERSION,
+    7: '4.0.0',
+    8: '4.2.0',
+    9: '4.4.0',
+}
 
 def get_compat_version(client):
-    compat_cmd = {"getParameter": 1, "featureCompatibilityVersion": 1}
-    cmd_response = client.admin.command(compat_cmd)
-    compat_version = cmd_response["featureCompatibilityVersion"]
+    # This is needed to avoid calling an administrative command
+    if hasattr(client,'_server_property'):
+        max_wire_version = client._server_property("max_wire_version")
+        compat_version = WireVersion2Version.get(max_wire_version,DEFAULT_WIRE_VERSION)
+    else:
+        compat_cmd = {"getParameter": 1, "featureCompatibilityVersion": 1}
+        cmd_response = client.admin.command(compat_cmd)
+        compat_version = cmd_response["featureCompatibilityVersion"]
+    
     if "version" in compat_version:
         compat_version = compat_version["version"]
 
