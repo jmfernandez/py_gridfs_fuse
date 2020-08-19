@@ -507,7 +507,7 @@ def _ensure_indexes(ops):
 
 DEFAULT_WIRE_VERSION = '3.6.0'
 WireVersion2Version={
-    3: '3.0.0',
+    3: '2.6.0',
     4: '3.2.0',
     5: '3.4.0',
     6: DEFAULT_WIRE_VERSION,

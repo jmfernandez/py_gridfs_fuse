@@ -146,8 +146,13 @@ def fuse_configurator(parser):
 def validate_options(options):
     '''Validates parser arguments'''
     uri = parse_uri(options.mongodb_uri)
-    options.database = uri.get('database', options.database)
-    options.collection = uri.get('collection', options.collection)
+    # These were splitted because we can have a assigned None value
+    database = uri.get('database')
+    if database is not None:
+        options.database = database
+    collection = uri.get('collection')
+    if collection is not None:
+        options.collection = collection
     if not options.mount_point:
         raise Exception("mount_point is mandatory")
 
