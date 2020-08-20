@@ -182,7 +182,12 @@ class NaiveGridFSOperations(pyfuse3.Operations):
         
         assert fh == pyfuse3.ROOT_INODE
         
-        for filename in enumerate(itertools.islice(self.gridfs.list(),off,None),off+1):
+        try:
+            filelist = self.gridfs.list()
+        except:
+            raise pyfuse3.FUSEError(errno.ENOTDIR)
+        
+        for filename in enumerate(itertools.islice(filelist,off,None),off+1):
             if not pyfuse3.readdir_reply(token,filename.encode(self._filename_encoding), await self._lookup(filename), index):
                 break
         
@@ -205,7 +210,10 @@ class NaiveGridFSOperations(pyfuse3.Operations):
     async def _lookup(self, name):
         self.logger.debug("_lookup: %s", name)
         
-        file_stats = self.gridfs.get_last_version(name)
+        try:
+            file_stats = self.gridfs.get_last_version(name)
+        except gridfs.errors.NoFile:
+            file_stats = None
         
         if file_stats is None:
             raise pyfuse3.FUSEError(errno.ENOENT)
