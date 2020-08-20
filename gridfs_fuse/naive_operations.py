@@ -170,6 +170,8 @@ class NaiveGridFSOperations(pyfuse3.Operations):
         entry.st_atime_ns = int(file_stats.upload_date.timestamp() * 1e9)
         entry.st_ctime_ns = entry.st_atime_ns
         entry.st_mtime_ns = entry.st_atime_ns
+        entry.st_blksize = file_stats.chunk_size
+        entry.st_blocks = (file_stats.length // file_stats.chunk_size) + 1
         
         entry.st_gid = os.getgid()
         entry.st_uid = os.getuid()
@@ -190,12 +192,12 @@ class NaiveGridFSOperations(pyfuse3.Operations):
         
         for index, filename in enumerate(itertools.islice(filelist,off,None),off+1):
             bname = filename.encode(self._filename_encoding)
-            if not pyfuse3.readdir_reply(token,bname, await self.lookup(inode,bname,None), index):
+            if not pyfuse3.readdir_reply(token,bname, await self.lookup(inode,bname), index):
                 break
         
         return
 
-    async def lookup(self, folder_inode, bname, ctx):
+    async def lookup(self, folder_inode, bname, ctx=None):
         self.logger.debug("lookup: %s %s", folder_inode, bname)
         
         if folder_inode != pyfuse3.ROOT_INODE:
