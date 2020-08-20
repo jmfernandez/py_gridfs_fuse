@@ -6,6 +6,7 @@ import sys
 here = os.path.abspath(os.path.dirname(__file__)) + '/'
 
 mount_script = 'mount.gridfs' if sys.platform != 'darwin' else 'mount_gridfs'
+naive_mount_script = 'mount.gridfs_naive' if sys.platform != 'darwin' else 'mount_gridfs_naive'
 
 setup(
     name="gridfs_fuse",
@@ -20,7 +21,9 @@ setup(
     entry_points={
         'console_scripts': [
             'gridfs_fuse = gridfs_fuse.main:main',
+            'naive_gridfs_fuse = gridfs_fuse.naive_main:main',
             '%s = gridfs_fuse.main:_mount_fuse_main' %(mount_script),
+            '%s = gridfs_fuse.naive_main:_mount_fuse_main' %(naive_mount_script),
         ]
     }
 )
