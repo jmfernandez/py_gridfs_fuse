@@ -180,7 +180,7 @@ class NaiveGridFSOperations(pyfuse3.Operations):
     async def readdir(self, inode, off, token):
         self.logger.debug("readdir: %s %s", inode, off)
         
-        assert fh == pyfuse3.ROOT_INODE
+        assert inode == pyfuse3.ROOT_INODE
         
         try:
             filelist = self.gridfs.list()
