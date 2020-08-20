@@ -182,13 +182,15 @@ class NaiveGridFSOperations(pyfuse3.Operations):
         
         assert inode == pyfuse3.ROOT_INODE
         
+        filelist = ['.','..']
         try:
-            filelist = self.gridfs.list()
+            filelist.extend(self.gridfs.list())
         except:
             raise pyfuse3.FUSEError(errno.ENOTDIR)
         
-        for filename in enumerate(itertools.islice(filelist,off,None),off+1):
-            if not pyfuse3.readdir_reply(token,filename.encode(self._filename_encoding), await self._lookup(filename), index):
+        for index, filename in enumerate(itertools.islice(filelist,off,None),off+1):
+            bname = filename.encode(self._filename_encoding)
+            if not pyfuse3.readdir_reply(token,bname, await self.lookup(inode,bname,None), index):
                 break
         
         return
@@ -199,7 +201,7 @@ class NaiveGridFSOperations(pyfuse3.Operations):
         if folder_inode != pyfuse3.ROOT_INODE:
             raise pyfuse3.FUSEError(errno.ENOENT)
         
-        if bname == b".":
+        if bname in (b".",b".."):
             return await self.getattr(folder_inode)
         
         # Names are in bytes, so translate to UTF-8
