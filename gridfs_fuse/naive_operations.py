@@ -148,7 +148,7 @@ class NaiveGridFSOperations(pyfuse3.Operations):
             entry.st_uid = os.getuid()
             entry.st_ino = inode
         else:
-            file_id = self.inode2stats.get(inode)
+            file_id = self.inode2id.get(inode)
             if file_id is None:
                 raise pyfuse3.FUSEError(errno.ENOENT)
             
