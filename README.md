@@ -43,13 +43,13 @@ Note this assumes that you have the `mount.gridfs_naive` program (or `mount_grid
 Ubuntu 16.04:
 ```bash
 sudo apt-get install libfuse python3-pip
-sudo -H pip3 install git+https://github.com/jmfernandez/py_gridfs_fuse.git@v0.2.1
+sudo -H pip3 install git+https://github.com/jmfernandez/py_gridfs_fuse.git@v0.3.0
 ```
 
 MacOSX:
 ```bash
 brew install osxfuse
-sudo -H pip3 install git+https://github.com/jmfernandez/py_gridfs_fuse.git@v0.2.1
+sudo -H pip3 install git+https://github.com/jmfernandez/py_gridfs_fuse.git@v0.3.0
 ```
 
 
