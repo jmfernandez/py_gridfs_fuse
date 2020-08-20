@@ -1,10 +1,16 @@
 # python gridfs fuse
-A FUSE wrapper around MongoDB gridfs using python and pyfuse3.
+A couple of FUSE wrappers around MongoDB gridfs using python3 and pyfuse3.
 
 This work is based on <https://github.com/axiros/py_gridfs_fuse>
 and <https://github.com/Liam-Deacon/py_gridfs_fuse> developments.
 
-## Usage
+There are two implementations:
+
+* The classical one from axiros and Liam Deacon. It is a full filesystem, with subdirectories, but it is not compatible with existing GridFS collections.
+
+* The naive one. It is fully compatible with existing GridFS collections, but it is not able to hold subdirectories, and some write scenarios are not supported.
+
+## Usage (classical)
 
 ```bash
 gridfs_fuse --mongodb-uri="mongodb://127.0.0.1:27017" --database="gridfs_fuse" --mount-point="/mnt/gridfs_fuse" # --options=allow_other
@@ -16,6 +22,18 @@ mongodb://127.0.0.1:27017/gridfs_fuse.fs  /mnt/gridfs_fuse  gridfs  defaults,all
 ```
 Note this assumes that you have the `mount.gridfs` program (or `mount_gridfs` on MacOS X) symlinked 
 into `/sbin/` e.g. `sudo ln -s $(which mount.gridfs) /sbin/`
+
+## Usage (naive)
+
+```bash
+naive_gridfs_fuse --mongodb-uri="mongodb://127.0.0.1:27017" --database="gridfs_fuse" --mount-point="/mnt/gridfs_fuse" # --options=allow_other
+```
+
+### fstab example
+```fstab
+mongodb://127.0.0.1:27017/gridfs_fuse.fs  /mnt/gridfs_fuse  gridfs_naive  defaults,allow_other  0  0 
+```
+Note this assumes that you have the `mount.gridfs_naive` program (or `mount_gridfs_naive` on MacOS X) symlinked into `/sbin/` e.g. `sudo ln -s $(which mount.gridfs_naive) /sbin/`
 
 ## Requirements
  * pymongo
@@ -35,15 +53,30 @@ sudo -H pip3 install git+https://github.com/jmfernandez/py_gridfs_fuse.git@v0.2.
 ```
 
 
-## Operations supported
+## Operations supported (classical)
  * create/list/delete directories => folder support.
  * read files.
  * delete files.
  * open and write once (like HDFS).
  * rename
 
+## Operations supported (naive)
+ * list root directory.
+ * read files.
+ * delete files.
+ * open and write once (like HDFS).
+ * rename
 
-## Operations not supported
+
+## Operations not supported (classical)
+ * modify an existing file.
+ * resize an existing file.
+ * hardlink
+ * symlink
+ * statfs
+
+## Operations not supported (classical)
+ * create/list/delete directories => folder support.
  * modify an existing file.
  * resize an existing file.
  * hardlink
@@ -51,7 +84,7 @@ sudo -H pip3 install git+https://github.com/jmfernandez/py_gridfs_fuse.git@v0.2.
  * statfs
 
 
-## Performance
+## Performance (classical)
 ### Setup
 * AWS d2.xlarge machine.
   * 4 @ 2.40Ghz (E5-2676)

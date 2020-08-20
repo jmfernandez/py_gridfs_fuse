@@ -117,7 +117,7 @@ class NaiveGridFSOperations(pyfuse3.Operations):
             raise pyfuse3.FUSEError(errno.ENOENT)
         
         # Do not allow writes to a existing file
-        if flags & os.O_WRONLY: 
+        if flags & os.O_WRONLY:
             raise pyfuse3.FUSEError(errno.EACCES)
         
         # Deny if write mode and filesystem is mounted as read-only

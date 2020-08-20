@@ -1,5 +1,10 @@
 BSD License
 
+For José María Fernández
+
+Copyright (c) 2020
+All rights reserved.
+
 For Axiros Software
 
 Copyright (c) 2002-2015, Axiros GmbH
