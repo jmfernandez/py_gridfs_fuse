@@ -84,12 +84,14 @@ class NaiveGridFSOperations(pyfuse3.Operations):
             self.handler.setLevel(logging.DEBUG)
         except:
             pass
-        self._readonly = True
+        #self._readonly = True
+        self._readonly = False
         self._database = database
         self._collection = collection
         self._filename_encoding = filename_encoding
         
         self.gridfs = gridfs.GridFS(database, collection)
+        self.gridfsbucket = gridfs.GridFSBucket(database, collection)
         self.gridfs_files = compat_collection(database, collection + '.files')
         
         self.inode2id = {
@@ -113,6 +115,10 @@ class NaiveGridFSOperations(pyfuse3.Operations):
         file_id = self.inode2id.get(inode)
         if file_id is None:
             raise pyfuse3.FUSEError(errno.ENOENT)
+        
+        # Do not allow writes to a existing file
+        if flags & os.O_WRONLY: 
+            raise pyfuse3.FUSEError(errno.EACCES)
         
         # Deny if write mode and filesystem is mounted as read-only
         if flags & (os.O_RDWR | os.O_CREAT | os.O_WRONLY | os.O_APPEND) and self._readonly:
@@ -166,12 +172,19 @@ class NaiveGridFSOperations(pyfuse3.Operations):
         
         entry = pyfuse3.EntryAttributes()
         entry.st_mode = (stat.S_IFREG | 0o644)
-        entry.st_size = file_stats.length
-        entry.st_atime_ns = int(file_stats.upload_date.timestamp() * 1e9)
+        grid_in = self.active_writes.get(inode)
+        if grid_in is not None:
+            entry.st_size = grid_in_size(grid_in)
+            entry.st_atime_ns = time_ns()
+            entry.st_blksize = grid_in.chunk_size
+        else:
+            entry.st_size = file_stats.length
+            entry.st_atime_ns = int(file_stats.upload_date.timestamp() * 1e9)
+            entry.st_blksize = file_stats.chunk_size
+        
+        entry.st_blocks = (entry.st_size // file_stats.chunk_size) + 1
         entry.st_ctime_ns = entry.st_atime_ns
         entry.st_mtime_ns = entry.st_atime_ns
-        entry.st_blksize = file_stats.chunk_size
-        entry.st_blocks = (file_stats.length // file_stats.chunk_size) + 1
         
         entry.st_gid = os.getgid()
         entry.st_uid = os.getuid()
@@ -244,17 +257,24 @@ class NaiveGridFSOperations(pyfuse3.Operations):
     #def _get_inode(self,entry):
     #    return entry.inode
     #
-    #async def create(self, folder_inode, bname, mode, flags, ctx):
-    #    self.logger.debug("create: %s %s %s %s", folder_inode, bname, mode, flags)
-    #
-    #    entry = await self._create_entry(folder_inode, bname, mode, ctx)
-    #    grid_in = self._create_grid_in(entry)
-    #
-    #    self.active_inodes[entry.inode] += 1
-    #    self.active_writes[entry.inode] = grid_in
-    #
-    #    return (pyfuse3.FileInfo(fh=entry.inode), await self._gen_gridfs_attr(entry))
-    #
+    async def create(self, folder_inode, bname, mode, flags, ctx):
+        self.logger.debug("create: %s %s %s %s", folder_inode, bname, mode, flags)
+        if folder_inode != pyfuse3.ROOT_INODE:
+            raise pyfuse3.FUSEError(errno.EINVAL)
+        
+        filename = bname.decode(self._filename_encoding,'replace')
+        grid_in = self.gridfs.new_file(filename=filename, metadata={'uid': ctx.uid,'gid': ctx.gid,'mode': mode})
+    
+        inode = self._last_inode
+        self._last_inode += 1
+        self.id2inode[grid_in._id] = inode
+        self.inode2id[inode] = grid_in._id
+        
+        self.active_inodes[inode] += 1
+        self.active_writes[inode] = grid_in
+    
+        return (pyfuse3.FileInfo(fh=inode), await self._getattr(grid_in,inode))
+    
     #def _create_grid_in(self, entry):
     #    gridfs_filename = self._create_full_path(entry)
     #    return self.gridfs.new_file(_id=entry.inode, filename=gridfs_filename)
@@ -306,6 +326,10 @@ class NaiveGridFSOperations(pyfuse3.Operations):
     #    if fields.update_size:
     #        raise pyfuse3.FUSEError(errno.EINVAL)
     #    
+    #    file_id = self.inode2id.get(inode)
+    #    if file_id is None:
+    #        raise pyfuse3.FUSEError(errno.ENOENT)
+    #    
     #    entry = self._entry_by_inode(inode)
     #
     #    # No way to change the size of an existing file.
@@ -319,17 +343,23 @@ class NaiveGridFSOperations(pyfuse3.Operations):
     #    self._update_entry(entry)
     #    return await self.getattr(inode,ctx)
     #
-    #async def unlink(self, folder_inode, bname, ctx):
-    #    self.logger.debug("unlink: %s %s", folder_inode, bname)
-    #
-    #    if self._readonly:
-    #        raise pyfuse3.FUSEError(errno.EINVAL)
-    #    
-    #    self._delete_inode(
-    #        folder_inode,
-    #        bname,
-    #        self._delete_inode_check_file)
-    #
+    async def unlink(self, folder_inode, bname, ctx):
+        self.logger.debug("unlink: %s %s", folder_inode, bname)
+        if folder_inode != pyfuse3.ROOT_INODE:
+            raise pyfuse3.FUSEError(errno.EINVAL)
+        
+        if self._readonly:
+            raise pyfuse3.FUSEError(errno.EINVAL)
+        
+        filename = bname.decode(self._filename_encoding,'replace')
+        lost = True
+        for grid_out in self.gridfs.find({'filename': filename}):
+            lost = False
+            self.gridfs.delete(grid_out._id)
+        
+        if lost:
+            raise pyfuse3.FUSEError(errno.ENOENT)
+    
     #async def rmdir(self, folder_inode, bname, ctx):
     #    self.logger.debug("rmdir: %s %s", folder_inode, bname)
     #
@@ -403,21 +433,20 @@ class NaiveGridFSOperations(pyfuse3.Operations):
         grid_out.seek(offset)
         return grid_out.read(length)
 
-    #async def write(self, inode, offset, data):
-    #    self.logger.debug("write: %s %s %s", inode, offset, len(data))
-    #
-    #    # Only 'append once' semantics are supported.
-    #
-    #    if inode not in self.active_writes:
-    #        raise pyfuse3.FUSEError(errno.EINVAL)
-    #
-    #    grid_in = self.active_writes[inode]
-    #
-    #    if offset != grid_in_size(grid_in):
-    #        raise pyfuse3.FUSEError(errno.EINVAL)
-    #
-    #    grid_in.write(data)
-    #    return len(data)
+    async def write(self, inode, offset, data):
+        self.logger.debug("write: %s %s %s", inode, offset, len(data))
+        
+        # Only 'append once' semantics are supported.
+        grid_in = self.active_writes.get(inode)
+        
+        if grid_in is None:
+            raise pyfuse3.FUSEError(errno.EINVAL)
+        
+        if offset != grid_in_size(grid_in):
+            raise pyfuse3.FUSEError(errno.EINVAL)
+        
+        grid_in.write(data)
+        return len(data)
 
     async def release(self, inode):
         self.logger.debug("release: %s", inode)
@@ -452,59 +481,40 @@ class NaiveGridFSOperations(pyfuse3.Operations):
     #    self.logger.debug("symlink: %s %s %s", folder_inode, bname, target)
     #    raise pyfuse3.FUSEError(errno.ENOSYS)
     #
-    #async def rename(self, old_folder_inode, old_bname, new_folder_inode, new_bname, flags, ctx):
-    #    self.logger.debug(
-    #        "rename: %s %s %s %s",
-    #        old_folder_inode,
-    #        old_bname,
-    #        new_folder_inode,
-    #        new_bname)
-    #
-    #    # Load the entry to move
-    #    entry_attributes = await self.lookup(old_folder_inode, old_bname, ctx)
-    #    entry = self._entry_by_inode(entry_attributes.st_ino)
-    #
-    #    # Load the target directory
-    #    new_folder = self._entry_by_inode(new_folder_inode)
-    #
-    #    # Check if the folder already contains this name and remove it.
-    #    
-    #    # Names are in bytes, so translate to UTF-8
-    #    new_name = new_bname.decode(self._filename_encoding,'replace')
-    #    
-    #    if new_name in new_folder.childs:
-    #        noop = lambda entry: None
-    #        self._delete_inode(new_folder.inode, new_bname, noop)
-    #
-    #    # Set the new parent and filename to the existing inode.
-    #    query = {"_id": entry.inode}
-    #    update = {
-    #        "$set": {
-    #            'parent_inode': new_folder.inode,
-    #            'filename': new_name
-    #        }
-    #    }
-    #    self.meta.update_one(query, update)
-    #
-    #    # Erase the inode from the older folder.
-    #    query = {"_id": old_folder_inode}
-    #    update = {"$pull": {'childs': (entry.filename, entry.inode)}}
-    #    self.meta.update_one(query, update)
-    #
-    #    # Add the inode to the new folder
-    #    query = {"_id": new_folder.inode}
-    #    update = {"$addToSet": {'childs': (new_name, entry.inode)}}
-    #    self.meta.update_one(query, update)
-    #
-    #    # Ensure the correct filename within gridfs
-    #    entry.parent_inode = new_folder.inode
-    #    entry.filename = new_name
-    #
-    #    gridfs_filename = self._create_full_path(entry)
-    #    query = {"_id": entry.inode}
-    #    update = {"$set": {'filename': gridfs_filename}}
-    #    self.gridfs_files.update_one(query, update)
-    #
+    async def rename(self, old_folder_inode, old_bname, new_folder_inode, new_bname, flags, ctx):
+        self.logger.debug(
+            "rename: %s %s %s %s",
+            old_folder_inode,
+            old_bname,
+            new_folder_inode,
+            new_bname)
+        
+        if flags != 0:
+            raise pyfuse3.FUSEError(errno.EINVAL)
+        
+        if old_folder_inode != pyfuse3.ROOT_INODE:
+            raise pyfuse3.FUSEError(errno.EINVAL)
+        
+        if new_folder_inode != pyfuse3.ROOT_INODE:
+            raise pyfuse3.FUSEError(errno.EINVAL)
+        
+        entry_old = await self.lookup(old_folder_inode,old_bname,ctx)
+        try:
+            entry_new = await self.lookup(new_folder_inode,new_bname,ctx)
+        except pyfuse3.FUSEError as exc:
+            if exc.errno != errno.ENOENT:
+                raise
+            target_exists = False
+        else:
+            target_exists = True
+        
+        if target_exists:
+            await self.unlink(new_folder_inode,new_bname,ctx)
+        
+        file_id = self.inode2id.get(entry_old.st_ino)
+        new_filename = new_bname.decode(self._filename_encoding,'replace')
+        self.gridfsbucket.rename(file_id,new_filename)
+    
     #async def link(self, inode, new_parent_inode, new_bname, ctx):
     #    self.logger.debug("link: %s %s %s", inode, new_parent_inode, new_bname)
     #    raise pyfuse3.FUSEError(errno.ENOSYS)
