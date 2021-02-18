@@ -6,9 +6,9 @@ and <https://github.com/Liam-Deacon/py_gridfs_fuse> developments.
 
 There are two implementations:
 
-* The classical one from axiros and Liam Deacon. It is a full filesystem, with subdirectories, but it is not compatible with existing GridFS collections.
+* The classical one from [axiros](https://github.com/axiros/py_gridfs_fuse) and [Liam Deacon](https://github.com/Liam-Deacon/py_gridfs_fuse). It is a full filesystem, with subdirectories, but it is not compatible with existing GridFS collections.
 
-* The naive one. It is fully compatible with existing GridFS collections, but it is not able to hold subdirectories, and some write scenarios are not supported.
+* The naive one, done by me ([jmfernandez](https://github.com/jmfernandez/py_gridfs_fuse)). It is fully compatible with existing GridFS collections, but it is not able to hold subdirectories, and some write scenarios are not supported.
 
 ## Usage (classical)
 
@@ -75,7 +75,7 @@ sudo -H pip3 install git+https://github.com/jmfernandez/py_gridfs_fuse.git@v0.3.
  * symlink
  * statfs
 
-## Operations not supported (classical)
+## Operations not supported (naive)
  * create/list/delete directories => folder support.
  * modify an existing file.
  * resize an existing file.
